@@ -39,8 +39,8 @@ process_directory() {
     local dir="$1"
     local system_folder=$(basename "$dir")
     
-    # Skip if we're in a .m3u folder
-    if [[ "$system_folder" == *.m3u ]]; then
+    # Skip if we're in a .m3u folder or root
+    if [[ "$system_folder" == *.m3u ]] || [[ "$system_folder" == "." ]]; then
         return
     fi
     
@@ -92,28 +92,25 @@ process_directory() {
                     done
                     
                     # Add all disc files to M3U
-                    file_count=0
                     for disc_file in "$dir/$game_folder/$basename_game"*.*; do
                         [ -e "$disc_file" ] || continue
                         disc_filename=$(basename "$disc_file")
                         
                         # Skip the m3u file itself
                         if [[ "${disc_filename,,}" != *.m3u ]]; then
-                            ((file_count++))
                             if [ $use_absolute -eq 1 ]; then
                                 # Use Android absolute path for Dolphin
                                 echo "$android_base/ROMs/$system_folder/$game_folder/$disc_filename" >> "$m3u_file"
                             else
-                                # Use relative path for DuckStation
+                                # Use relative path for everything else (i.e. Duckstation etc)
                                 echo "$disc_filename" >> "$m3u_file"
                             fi
                         fi
                     done
                     
-                    if [ $file_count -gt 0 ]; then
+                    # Check if M3U file has content
+                    if [ -s "$m3u_file" ]; then
                         echo "  Created: $game_folder/${basename_game}.m3u (Unix line endings)"
-                    else
-                        echo "  Warning: No ROM files found for $basename_game"
                     fi
                 fi
             fi
@@ -130,4 +127,4 @@ done
 rm -f "$processed_file"
 
 echo
-echo "Done! Multi-disc games organized in individual folders with Unix line endings."
+echo "Done! Multi-disc games organized in individual folders. :)"

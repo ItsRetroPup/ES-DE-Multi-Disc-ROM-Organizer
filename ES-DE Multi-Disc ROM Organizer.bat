@@ -45,88 +45,86 @@ for /r %%d in (.) do (
     for %%I in (.) do set "system_folder=%%~nxI"
     
     :: Skip if we're in the root directory or in a .m3u folder
+    set "skip_folder=0"
     echo !system_folder! | findstr /i "\.m3u$" >nul
-    if !errorlevel! neq 0 (
-        if not "!system_folder!"=="." (
-            echo.
-            echo Scanning folder: !system_folder!
-            
-            :: Loop through all common ROM extensions
-            for %%e in (iso cue bin chd pbp zip rvz) do (
-                for %%f in (*.%%e) do (
-                    set "filename=%%~nf"
-                    set "extension=%%~xf"
+    if !errorlevel! equ 0 set "skip_folder=1"
+    if "!system_folder!"=="." set "skip_folder=1"
+    
+    if !skip_folder! equ 0 (
+        echo.
+        echo Scanning folder: !system_folder!
+        
+        :: Loop through all common ROM extensions
+        for %%e in (iso cue bin chd pbp zip rvz) do (
+            for %%f in (*.%%e) do (
+                set "filename=%%~nf"
+                set "extension=%%~xf"
+                
+                :: Check if filename contains disc indicators
+                echo !filename! | findstr /i /r "disc.*[0-9] disk.*[0-9] cd.*[0-9] (disc.*[0-9]) (disk.*[0-9]) (cd.*[0-9])" >nul
+                
+                if !errorlevel! equ 0 (
+                    :: Extract base name (remove disc number part)
+                    for /f "tokens=1 delims=()" %%a in ("!filename!") do set "basename=%%a"
+                    set "basename=!basename:~0,-1!"
                     
-                    :: Check if filename contains disc indicators
-                    echo !filename! | findstr /i /r "disc.*[0-9] disk.*[0-9] cd.*[0-9] (disc.*[0-9]) (disk.*[0-9]) (cd.*[0-9])" >nul
+                    :: Create unique identifier with system folder
+                    set "unique_id=!system_folder!_!basename!"
                     
-                    if !errorlevel! equ 0 (
-                        :: Extract base name (remove disc number part)
-                        for /f "tokens=1 delims=()" %%a in ("!filename!") do set "basename=%%a"
-                        set "basename=!basename:~0,-1!"
+                    :: Check if we've already processed this game in this folder
+                    findstr /x /c:"!unique_id!" "%processed_file%" >nul 2>&1
+                    if !errorlevel! neq 0 (
+                        echo   Found multi-disc game: !basename!
                         
-                        :: Create unique identifier with system folder
-                        set "unique_id=!system_folder!_!basename!"
+                        :: Add to processed list
+                        echo !unique_id!>> "%processed_file%"
                         
-                        :: Check if we've already processed this game in this folder
-                        findstr /x /c:"!unique_id!" "%processed_file%" >nul 2>&1
-                        if !errorlevel! neq 0 (
-                            echo   Found multi-disc game: !basename!
-                            
-                            :: Add to processed list
-                            echo !unique_id!>> "%processed_file%"
-                            
-                            :: Create game folder in current directory
-                            set "game_folder=!basename!.m3u"
-                            if not exist "!game_folder!" mkdir "!game_folder!"
-                            
-                            :: Move all discs for this game to its folder
-                            move "!basename!*.*" "!game_folder!\" >nul 2>&1
-                            
-                            :: Create M3U file in the game folder with Unix line endings
-                            set "m3u_file=!game_folder!\!basename!.m3u"
-                            if exist "!m3u_file!" del "!m3u_file!"
-                            
-                            :: Create temporary file with content
-                            set "temp_m3u=%temp%\temp_m3u_!RANDOM!.txt"
-                            
-                            :: Determine if this is a Dolphin ROM (rvz, iso for GameCube/Wii)
-                            set "use_absolute=0"
-                            for %%x in ("!game_folder!\!basename!*.*") do (
-                                if /i "%%~xx"==".rvz" set "use_absolute=1"
-                            )
-                            
-                            :: Add all disc files to temporary M3U
-                            set "file_count=0"
-                            for %%x in ("!game_folder!\!basename!*.*") do (
-                                if /i not "%%~xx"==".m3u" (
-                                    set /a file_count+=1
-                                    if !use_absolute!==1 (
-                                        :: Use Android absolute path for Dolphin
-                                        echo !android_base!/ROMs/!system_folder!/!game_folder!/%%~nxx>> "!temp_m3u!"
-                                    ) else (
-                                        :: Use relative path for everything else (i.e. Duckstation etc)
-                                        echo %%~nxx>> "!temp_m3u!"
-                                    )
+                        :: Create game folder in current directory
+                        set "game_folder=!basename!.m3u"
+                        if not exist "!game_folder!" mkdir "!game_folder!"
+                        
+                        :: Move all discs for this game to its folder
+                        move "!basename!*.*" "!game_folder!\" >nul 2>&1
+                        
+                        :: Create M3U file in the game folder with Unix line endings
+                        set "m3u_file=!game_folder!\!basename!.m3u"
+                        if exist "!m3u_file!" del "!m3u_file!"
+                        
+                        :: Create temporary file with content
+                        set "temp_m3u=%temp%\temp_m3u_!RANDOM!.txt"
+                        
+                        :: Determine if this is a Dolphin ROM (rvz, iso for GameCube/Wii)
+                        set "use_absolute=0"
+                        for %%x in ("!game_folder!\!basename!*.*") do (
+                            if /i "%%~xx"==".rvz" set "use_absolute=1"
+                        )
+                        
+                        :: Add all disc files to temporary M3U
+                        for %%x in ("!game_folder!\!basename!*.*") do (
+                            if /i not "%%~xx"==".m3u" (
+                                if !use_absolute!==1 (
+                                    :: Use Android absolute path for Dolphin
+                                    echo !android_base!/ROMs/!system_folder!/!game_folder!/%%~nxx>> "!temp_m3u!"
+                                ) else (
+                                    :: Use relative path for everything else (i.e. Duckstation etc)
+                                    echo %%~nxx>> "!temp_m3u!"
                                 )
                             )
+                        )
+                        
+                        :: Check if temp file exists and has content
+                        if exist "!temp_m3u!" (
+                            :: Get full paths for PowerShell
+                            set "full_temp_path=!temp_m3u!"
+                            set "full_m3u_path=!CD!\!m3u_file!"
                             
-                            :: Only process if files were found
-                            if !file_count! gtr 0 (
-                                :: Get full paths for PowerShell
-                                set "full_temp_path=!temp_m3u!"
-                                set "full_m3u_path=!CD!\!m3u_file!"
-                                
-                                :: Convert CRLF to LF using PowerShell
-                                powershell -NoProfile -Command "$text = Get-Content '!full_temp_path!' -Raw; $text = $text -replace \"`r`n\", \"`n\"; [System.IO.File]::WriteAllText('!full_m3u_path!', $text, [System.Text.Encoding]::UTF8)"
-                                
-                                echo   Created: !m3u_file! (Unix line endings)
-                            ) else (
-                                echo   Warning: No ROM files found for !basename!
-                            )
+                            :: Convert CRLF to LF using PowerShell
+                            powershell -NoProfile -Command "$text = Get-Content '!full_temp_path!' -Raw; $text = $text -replace \"`r`n\", \"`n\"; [System.IO.File]::WriteAllText('!full_m3u_path!', $text, [System.Text.Encoding]::UTF8)"
+                            
+                            echo   Created: !m3u_file! (Unix line endings)
                             
                             :: Cleanup temp file
-                            if exist "!temp_m3u!" del "!temp_m3u!"
+                            del "!temp_m3u!" >nul 2>&1
                         )
                     )
                 )
